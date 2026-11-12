@@ -70,6 +70,15 @@ const Starter=struct {
         if(try robot.battery.charge()<(try robot.battery.capacity())/4)try robot.drive.set(.{.throttle=((try robot.drive.get_throttle()) orelse 0)*0.5});
         if(try robot.nav.storm()) |storm| {if(((try storm.margin(position)) orelse -1e9) > -60)try robot.drive.set(.{.throttle=0.8,.turn=try robot.angles.clamp((try robot.angles.angle_diff(try robot.angles.bearing_to(storm.center,position),heading))/30,-1,1)});}
         if(try robot.nav.zone()) |zone| {if(((try zone.margin(position)) orelse 1e9)<60){const climb=if(zone.shape==cy.Shape.sphere) try robot.angles.elevation_to(position,zone.center) else 0;try robot.drive.set(.{.throttle=0.8,.turn=try robot.angles.clamp((try robot.angles.angle_diff(try robot.angles.bearing_to(position,zone.center),heading))/30,-1,1),.pitch_turn=try robot.angles.clamp((climb-pitch)/30,-1,1)});}}
+        // Only the arena's rate calibration requests this work; safe to delete.
+        if(try robot.raw.number("state.calibration.work")) |work| {if(work>0)try robot.status.set(.{.text="WORK",.value=calibrationWork(@intFromFloat(work),@intCast(try robot.clock.tick()))});}
     }
 };
+// The calibration kernel, xorshift-sqrt v1: work rounds of a 64-bit
+// xorshift and a square-root sum.
+fn calibrationWork(work:u64,tick:u64) f64 {
+    var x:u64=88172645463325252 ^ tick;var sum:f64=0;var i:u64=0;
+    while(i<work):(i+=1){x ^= x << 13;x ^= x >> 7;x ^= x << 17;sum += @sqrt(@as(f64,@floatFromInt(x >> 11)));}
+    const whole:u64=@intFromFloat(@floor(sum));return @floatFromInt((whole+(x >> 40))%1000000);
+}
 pub fn main() !void {try cy.run(Starter);}
